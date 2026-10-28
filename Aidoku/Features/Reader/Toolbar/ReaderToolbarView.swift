@@ -27,6 +27,7 @@ class ReaderToolbarView: UIView {
     }
 
     let sliderView = ReaderSliderView()
+    private let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
     private let titleLabel = MarqueeLabelView()
     private let pageLabel = UILabel()
 
@@ -41,7 +42,10 @@ class ReaderToolbarView: UIView {
     }
 
     func configure() {
-        backgroundColor = .systemBackground
+        backgroundColor = .clear
+
+        blurView.isUserInteractionEnabled = false
+        insertSubview(blurView, at: 0)
 
         titleLabel.font = ReaderFont.publico(size: 16)
         titleLabel.textColor = ReaderSliderView.fillColor
@@ -60,21 +64,30 @@ class ReaderToolbarView: UIView {
     }
 
     func constrain() {
+        blurView.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         pageLabel.translatesAutoresizingMaskIntoConstraints = false
         sliderView.translatesAutoresizingMaskIntoConstraints = false
 
-        NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
-            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 12),
-            titleLabel.trailingAnchor.constraint(equalTo: pageLabel.leadingAnchor, constant: -16),
+        titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
-            pageLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+        NSLayoutConstraint.activate([
+            blurView.topAnchor.constraint(equalTo: topAnchor),
+            blurView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            blurView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            blurView.trailingAnchor.constraint(equalTo: trailingAnchor),
+
+            titleLabel.leadingAnchor.constraint(equalTo: sliderView.leadingAnchor),
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            titleLabel.widthAnchor.constraint(lessThanOrEqualTo: sliderView.widthAnchor, multiplier: 0.5),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: pageLabel.leadingAnchor, constant: -16),
+
+            pageLabel.trailingAnchor.constraint(equalTo: sliderView.trailingAnchor),
             pageLabel.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
 
             sliderView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 10),
-            sliderView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
-            sliderView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+            sliderView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            sliderView.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.9, constant: -36),
             sliderView.heightAnchor.constraint(equalToConstant: ReaderSliderView.barHeight),
             sliderView.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -14)
         ])

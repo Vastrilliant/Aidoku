@@ -15,6 +15,7 @@ actor MangaManager {
     static let shared = MangaManager()
 
     private static let taskIdentifier = BackgroundTaskIdentifier.libraryRefresh
+    private static let continuedTaskIdentifier = BackgroundTaskIdentifier.libraryRefreshContinued
 
     private var libraryRefreshTask: Task<(), Never>?
     private var libraryRefreshProgressTask: Task<(), Never>?
@@ -328,7 +329,7 @@ extension MangaManager {
 extension MangaManager {
     nonisolated func register() {
 #if !targetEnvironment(simulator)
-        BGTaskScheduler.shared.register(forTaskWithIdentifier: Self.taskIdentifier, using: nil) { @Sendable [weak self] task in
+        let handler: @Sendable (BGTask) -> Void = { [weak self] task in
             guard let self else { return }
 
             task.expirationHandler = {
@@ -343,6 +344,10 @@ extension MangaManager {
 
                 task.setTaskCompleted(success: true)
             }
+        }
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: Self.taskIdentifier, using: nil, launchHandler: handler)
+        if #available(iOS 26.0, *), let identifier = Self.continuedTaskIdentifier, identifier != Self.taskIdentifier {
+            BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: nil, launchHandler: handler)
         }
 #endif
     }
@@ -394,9 +399,14 @@ extension MangaManager {
         self.skipReachabilityCheck = skipReachabilityCheck
 
 #if !targetEnvironment(simulator)
-        if #available(iOS 26.0, *), AppSettings.library.backgroundRefresh.get(), !ProcessInfo.processInfo.isMacCatalystApp {
+        if
+            #available(iOS 26.0, *),
+            let identifier = Self.continuedTaskIdentifier,
+            AppSettings.library.backgroundRefresh.get(),
+            !ProcessInfo.processInfo.isMacCatalystApp
+        {
             let request = BGContinuedProcessingTaskRequest(
-                identifier: Self.taskIdentifier,
+                identifier: identifier,
                 title: NSLocalizedString("REFRESHING_LIBRARY"),
                 subtitle: NSLocalizedString("PROCESSING_ENTRIES")
             )

@@ -87,14 +87,19 @@ class ReaderViewController: BaseObservingViewController {
     }()
 
     private lazy var closeButton: UIButton = {
-        var configuration = UIButton.Configuration.filled()
+        var configuration: UIButton.Configuration
+        if #available(iOS 26.0, *) {
+            configuration = .glass()
+        } else {
+            configuration = .filled()
+            configuration.baseBackgroundColor = .secondarySystemBackground
+        }
         configuration.cornerStyle = .capsule
         configuration.image = UIImage(
             systemName: "xmark",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .bold)
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .bold)
         )
         configuration.baseForegroundColor = ReaderSliderView.fillColor
-        configuration.baseBackgroundColor = .secondarySystemBackground
         let button = UIButton(configuration: configuration)
         button.addTarget(self, action: #selector(close), for: .touchUpInside)
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -295,8 +300,8 @@ class ReaderViewController: BaseObservingViewController {
 
             closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
             closeButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
-            closeButton.widthAnchor.constraint(equalToConstant: 36),
-            closeButton.heightAnchor.constraint(equalToConstant: 36)
+            closeButton.widthAnchor.constraint(equalToConstant: 52),
+            closeButton.heightAnchor.constraint(equalToConstant: 52)
         ])
         updateFloatingButtonConstraints()
 
@@ -768,7 +773,6 @@ extension ReaderViewController {
         // so the theme colors are written into them directly
         let backgroundColor = ReaderTextTheme.getCurrentBackground()
         let textColor = ReaderTextTheme.getCurrentText()
-        toolbarView.backgroundColor = themed ? backgroundColor : .systemBackground
         let titleColor = themed ? textColor : nil
         if let navigationBar = navigationController?.navigationBar {
             func applyTheme(_ appearance: UINavigationBarAppearance) {

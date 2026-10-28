@@ -85,7 +85,8 @@ final class MarqueeLabelView: UIView {
     }
 
     override var intrinsicContentSize: CGSize {
-        CGSize(width: UIView.noIntrinsicMetric, height: ceil(font.lineHeight))
+        let width = ((text ?? "") as NSString).size(withAttributes: [.font: font]).width
+        return CGSize(width: ceil(width), height: ceil(font.lineHeight))
     }
 
     override func didMoveToWindow() {

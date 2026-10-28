@@ -16,6 +16,7 @@ class ReaderSliderView: UIControl {
     static let fillColor = UIColor(red: 0x8D / 255, green: 0x8D / 255, blue: 0x93 / 255, alpha: 1)
     static let trackColor = UIColor(red: 0x48 / 255, green: 0x48 / 255, blue: 0x4A / 255, alpha: 1)
     static let barHeight: CGFloat = 8
+    static let expandedBarHeight: CGFloat = 16
 
     var direction: SliderDirection = .forward {
         didSet { setNeedsLayout() }
@@ -36,6 +37,9 @@ class ReaderSliderView: UIControl {
 
     private let trackView = UIView()
     private let fillView = UIView()
+    private var currentBarHeight: CGFloat = ReaderSliderView.barHeight
+    private var touchStartX: CGFloat = 0
+    private var touchStartValue: CGFloat = 0
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -59,12 +63,15 @@ class ReaderSliderView: UIControl {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let barY = (bounds.height - Self.barHeight) / 2
-        trackView.frame = CGRect(x: 0, y: barY, width: bounds.width, height: Self.barHeight)
+        let height = currentBarHeight
+        let barY = (bounds.height - height) / 2
+        trackView.frame = CGRect(x: 0, y: barY, width: bounds.width, height: height)
+        trackView.layer.cornerRadius = height / 2
 
         let fillWidth = bounds.width * currentValue
         let x = direction == .forward ? 0 : bounds.width - fillWidth
-        fillView.frame = CGRect(x: x, y: barY, width: fillWidth, height: Self.barHeight)
+        fillView.frame = CGRect(x: x, y: barY, width: fillWidth, height: height)
+        fillView.layer.cornerRadius = height / 2
     }
 
     // larger touch target than the visible bar
@@ -72,19 +79,32 @@ class ReaderSliderView: UIControl {
         bounds.insetBy(dx: -8, dy: -16).contains(point)
     }
 
+    private func setExpanded(_ expanded: Bool) {
+        currentBarHeight = expanded ? Self.expandedBarHeight : Self.barHeight
+        UIView.animate(
+            withDuration: 0.25,
+            delay: 0,
+            usingSpringWithDamping: 0.8,
+            initialSpringVelocity: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction]
+        ) {
+            self.layoutIfNeeded()
+        }
+    }
+
     private func value(for touch: UITouch) -> CGFloat {
         guard bounds.width > 0 else { return currentValue }
-        let x = min(max(touch.location(in: self).x, 0), bounds.width)
-        let fraction = x / bounds.width
-        let value = direction == .forward ? fraction : 1 - fraction
-        return minimumValue + (maximumValue - minimumValue) * value
+        let delta = (touch.location(in: self).x - touchStartX) / bounds.width
+        let signedDelta = direction == .forward ? delta : -delta
+        return touchStartValue + (maximumValue - minimumValue) * signedDelta
     }
 }
 
 extension ReaderSliderView {
     override func beginTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
-        currentValue = value(for: touch)
-        sendActions(for: .valueChanged)
+        touchStartX = touch.location(in: self).x
+        touchStartValue = currentValue
+        setExpanded(true)
         return true
     }
 
@@ -95,6 +115,7 @@ extension ReaderSliderView {
     }
 
     override func endTracking(_ touch: UITouch?, with event: UIEvent?) {
+        setExpanded(false)
         sendActions(for: .editingDidEnd)
     }
 

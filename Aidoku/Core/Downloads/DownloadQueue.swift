@@ -48,13 +48,14 @@ actor DownloadQueue {
         if
             bgTask == nil,
             #available(iOS 26.0, *),
+            let identifier = Self.taskIdentifier,
             AppSettings.downloads.background.get(),
             !ProcessInfo.processInfo.isMacCatalystApp
         {
             await register()
 
             let request = BGContinuedProcessingTaskRequest(
-                identifier: Self.taskIdentifier,
+                identifier: identifier,
                 title: NSLocalizedString("DOWNLOADING"),
                 subtitle: NSLocalizedString("PROCESSING_QUEUE")
             )
@@ -265,10 +266,10 @@ extension DownloadQueue {
 #if !targetEnvironment(simulator)
     @available(iOS 26.0, *)
     private func register() async {
-        guard !registeredTask else { return }
+        guard !registeredTask, let identifier = Self.taskIdentifier else { return }
         registeredTask = true
 
-        BGTaskScheduler.shared.register(forTaskWithIdentifier: Self.taskIdentifier, using: nil) { @Sendable [weak self] task in
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: nil) { @Sendable [weak self] task in
             guard let self, let task = task as? BGContinuedProcessingTask else { return }
 
             task.expirationHandler = {
