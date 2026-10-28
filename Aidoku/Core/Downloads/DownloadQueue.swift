@@ -27,7 +27,7 @@ actor DownloadQueue {
     private var bgTask: ProgressReporting?
     private var sendCancelNotification = true
 
-    private static let taskIdentifier = (Bundle.main.bundleIdentifier ?? "") + ".download"
+    private static let taskIdentifier = BackgroundTaskIdentifier.download
 
     init(cache: DownloadCache, onCompletion: (() -> Void)? = nil) {
         self.cache = cache
@@ -40,6 +40,7 @@ actor DownloadQueue {
 
     func start() async {
         paused = false
+        updateKeepAlive()
 
         guard !queue.isEmpty else { return }
 
@@ -82,6 +83,7 @@ actor DownloadQueue {
 
     func resume() async {
         paused = false
+        updateKeepAlive()
 
         if #available(iOS 26.0, *), AppSettings.downloads.background.get() {
             if bgTask == nil {
@@ -98,6 +100,7 @@ actor DownloadQueue {
 
     func pause() async {
         paused = true
+        updateKeepAlive()
 
         if #available(iOS 26.0, *) {
             if let task = bgTask as? BGContinuedProcessingTask {
@@ -216,7 +219,12 @@ actor DownloadQueue {
         progressBlocks.removeValue(forKey: chapter)
     }
 
+    private func updateKeepAlive() {
+        BackgroundKeepAlive.shared.set(.download, active: !paused && !queue.isEmpty)
+    }
+
     func saveQueueState() {
+        updateKeepAlive()
         let queueData = try? JSONEncoder().encode(queue)
         UserDefaults.standard.set(queueData, forKey: "Data.downloadQueueState")
     }

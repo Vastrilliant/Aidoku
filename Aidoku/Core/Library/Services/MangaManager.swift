@@ -14,7 +14,7 @@ import UIKit
 actor MangaManager {
     static let shared = MangaManager()
 
-    private static let taskIdentifier = (Bundle.main.bundleIdentifier ?? "") + ".libraryRefresh"
+    private static let taskIdentifier = BackgroundTaskIdentifier.libraryRefresh
 
     private var libraryRefreshTask: Task<(), Never>?
     private var libraryRefreshProgressTask: Task<(), Never>?
@@ -426,6 +426,7 @@ extension MangaManager {
         } else {
             // spawn new library refresh
             AppSettings.flags.libraryRefreshInProgress.set(true)
+            BackgroundKeepAlive.shared.set(.libraryRefresh, active: true)
             libraryRefreshTask = Task {
                 await doLibraryRefresh(
                     category: category,
@@ -450,6 +451,7 @@ extension MangaManager {
                 )
                 libraryRefreshTask = nil
                 AppSettings.flags.libraryRefreshInProgress.reset()
+                BackgroundKeepAlive.shared.set(.libraryRefresh, active: false)
             }
             await libraryRefreshTask?.value
         }

@@ -18,7 +18,7 @@ actor BackupManager {
         Self.directory.contentsByDateModified
     }
 
-    private static let backupTaskIdentifier = (Bundle.main.bundleIdentifier ?? "") + ".backup"
+    private static let backupTaskIdentifier = BackgroundTaskIdentifier.backup
     private static let maxAutoBackups = 4
 
     private static let excludedSettings: Set<String> = [

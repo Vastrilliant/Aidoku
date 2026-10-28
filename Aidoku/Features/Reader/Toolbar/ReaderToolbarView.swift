@@ -5,7 +5,6 @@
 //  Created by Skitty on 8/15/22.
 //
 
-import Combine
 import UIKit
 
 class ReaderToolbarView: UIView {
@@ -18,24 +17,23 @@ class ReaderToolbarView: UIView {
         }
     }
     var currentPage: Int? {
-        didSet { updatePageLabels() }
+        didSet { updatePageLabel() }
     }
     var totalPages: Int? {
-        didSet { updatePageLabels() }
+        didSet { updatePageLabel() }
+    }
+    var title: String? {
+        didSet { titleLabel.text = title }
     }
 
     let sliderView = ReaderSliderView()
-    private let incognitoModeLabel = UILabel()
-    private let currentPageLabel = UILabel()
-    private let pagesLeftLabel = UILabel()
-
-    private var cancellables: [AnyCancellable] = []
+    private let titleLabel = MarqueeLabelView()
+    private let pageLabel = UILabel()
 
     init() {
         super.init(frame: .zero)
         configure()
         constrain()
-        observe()
     }
 
     required init?(coder: NSCoder) {
@@ -43,65 +41,43 @@ class ReaderToolbarView: UIView {
     }
 
     func configure() {
-        incognitoModeLabel.font = .systemFont(ofSize: 10)
-        incognitoModeLabel.textColor = .secondaryLabel
-        incognitoModeLabel.textAlignment = .left
-        incognitoModeLabel.isHidden = !AppSettings.general.incognitoMode.get()
-        addSubview(incognitoModeLabel)
+        backgroundColor = .systemBackground
 
-        currentPageLabel.font = .systemFont(ofSize: 10)
-        currentPageLabel.textAlignment = .center
-        currentPageLabel.sizeToFit()
-        addSubview(currentPageLabel)
+        titleLabel.font = ReaderFont.publico(size: 16)
+        titleLabel.textColor = ReaderSliderView.fillColor
+        addSubview(titleLabel)
 
-        pagesLeftLabel.font = .systemFont(ofSize: 10)
-        pagesLeftLabel.textColor = .secondaryLabel
-        pagesLeftLabel.textAlignment = .right
-        addSubview(pagesLeftLabel)
+        pageLabel.font = ReaderFont.publico(size: 11)
+        pageLabel.textColor = ReaderSliderView.fillColor
+        pageLabel.textAlignment = .right
+        pageLabel.numberOfLines = 1
+        pageLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
+        pageLabel.setContentHuggingPriority(.required, for: .horizontal)
+        addSubview(pageLabel)
 
         sliderView.semanticContentAttribute = .playback // for rtl languages
         addSubview(sliderView)
     }
 
     func constrain() {
-        incognitoModeLabel.translatesAutoresizingMaskIntoConstraints = false
-        currentPageLabel.translatesAutoresizingMaskIntoConstraints = false
-        pagesLeftLabel.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+        pageLabel.translatesAutoresizingMaskIntoConstraints = false
         sliderView.translatesAutoresizingMaskIntoConstraints = false
 
         NSLayoutConstraint.activate([
-            incognitoModeLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            incognitoModeLabel.bottomAnchor.constraint(equalTo: bottomAnchor),
+            titleLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
+            titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            titleLabel.trailingAnchor.constraint(equalTo: pageLabel.leadingAnchor, constant: -16),
 
-            currentPageLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
-            currentPageLabel.bottomAnchor.constraint(equalTo: bottomAnchor),
+            pageLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+            pageLabel.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
 
-            pagesLeftLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
-            pagesLeftLabel.bottomAnchor.constraint(equalTo: bottomAnchor),
-
-            sliderView.heightAnchor.constraint(equalToConstant: 12),
-            sliderView.topAnchor.constraint(equalTo: topAnchor, constant: 10),
-            sliderView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            sliderView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12)
+            sliderView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 10),
+            sliderView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
+            sliderView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+            sliderView.heightAnchor.constraint(equalToConstant: ReaderSliderView.barHeight),
+            sliderView.bottomAnchor.constraint(equalTo: safeAreaLayoutGuide.bottomAnchor, constant: -14)
         ])
-    }
-
-    func observe() {
-        NotificationCenter.default.publisher(for: .init(AppSettings.general.incognitoMode.key))
-            .sink { [weak self] _ in
-                self?.incognitoModeLabel.isHidden = !AppSettings.general.incognitoMode.get()
-            }
-            .store(in: &cancellables)
-    }
-
-    // allow slider thumb to be touched outside bounds
-    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        for subview in subviews where subview is ReaderSliderView {
-            if subview.subviews.contains(where: { $0.bounds.contains(convert(point, to: $0)) }) {
-                return subview
-            }
-        }
-        return super.hitTest(point, with: event)
     }
 
     func displayPage(_ page: Int) {
@@ -114,14 +90,13 @@ class ReaderToolbarView: UIView {
         } else if page < 1 {
             page = 1
         }
-        currentPageLabel.text = String(format: NSLocalizedString("%i_OF_%i"), page, totalPages)
+        pageLabel.text = String(format: NSLocalizedString("%i_OF_%i"), page, totalPages)
         currentPageValue = page
     }
 
-    func updatePageLabels() {
+    func updatePageLabel() {
         guard var currentPage = currentPage, let totalPages = totalPages else {
-            currentPageLabel.text = nil
-            pagesLeftLabel.text = nil
+            pageLabel.text = nil
             return
         }
 
@@ -130,16 +105,7 @@ class ReaderToolbarView: UIView {
         } else if currentPage < 1 {
             currentPage = 1
         }
-        let pagesLeft = totalPages - currentPage
-        currentPageLabel.text = String(format: NSLocalizedString("%i_OF_%i"), currentPage, totalPages)
-        if pagesLeft < 1 {
-            pagesLeftLabel.text = nil
-        } else {
-            pagesLeftLabel.text = pagesLeft == 1
-                ? NSLocalizedString("ONE_PAGE_LEFT")
-                : String(format: NSLocalizedString("%i_PAGES_LEFT"), pagesLeft)
-        }
-        incognitoModeLabel.text = NSLocalizedString("INCOGNITO_MODE")
+        pageLabel.text = String(format: NSLocalizedString("%i_OF_%i"), currentPage, totalPages)
     }
 
     func updateSliderPosition() {

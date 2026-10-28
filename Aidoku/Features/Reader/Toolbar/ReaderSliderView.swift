@@ -13,237 +13,88 @@ class ReaderSliderView: UIControl {
         case backward
     }
 
+    static let fillColor = UIColor(red: 0x8D / 255, green: 0x8D / 255, blue: 0x93 / 255, alpha: 1)
+    static let trackColor = UIColor(red: 0x48 / 255, green: 0x48 / 255, blue: 0x4A / 255, alpha: 1)
+    static let barHeight: CGFloat = 8
+
     var direction: SliderDirection = .forward {
-        didSet {
-            thumbPositionConstraint?.isActive = false
-            trackPositionConstraint?.isActive = false
-            if direction == .forward {
-                thumbPositionConstraint = thumbView.leadingAnchor.constraint(
-                    equalTo: leadingAnchor,
-                    constant: Self.trackInset - Self.thumbWidth / 2
-                )
-                trackPositionConstraint = progressedTrackView.leadingAnchor.constraint(
-                    equalTo: leadingAnchor,
-                    constant: Self.trackInset
-                )
-            } else {
-                thumbPositionConstraint = thumbView.trailingAnchor.constraint(
-                    equalTo: trailingAnchor,
-                    constant: Self.thumbWidth / 2 - Self.trackInset
-                )
-                trackPositionConstraint = progressedTrackView.trailingAnchor.constraint(
-                    equalTo: trailingAnchor,
-                    constant: -Self.trackInset
-                )
-            }
-            thumbPositionConstraint?.isActive = true
-            trackPositionConstraint?.isActive = true
-        }
+        didSet { setNeedsLayout() }
     }
 
     var minimumValue: CGFloat = 0
     var maximumValue: CGFloat = 1
     var currentValue: CGFloat = 0 {
         didSet {
-            let boundedValue = boundValue(
-                currentValue,
-                toLowerValue: minimumValue,
-                upperValue: maximumValue
-            )
+            let boundedValue = min(max(currentValue, minimumValue), maximumValue)
             if currentValue != boundedValue {
                 currentValue = boundedValue
                 return
             }
-            updateLayerFrames()
+            setNeedsLayout()
         }
     }
 
-    private lazy var trackView = {
-        let trackView = UIView()
-        trackView.backgroundColor = .secondarySystemFill
-        trackView.layer.cornerRadius = 1.5
-        trackView.isUserInteractionEnabled = true
-        return trackView
-    }()
-    private lazy var progressedTrackView = {
-        let progressedTrackView = UIView()
-        progressedTrackView.backgroundColor = tintColor
-        progressedTrackView.layer.cornerRadius = 1.5
-        progressedTrackView.isUserInteractionEnabled = true
-        return progressedTrackView
-    }()
-    private lazy var thumbView = {
-        let thumbView = UIView()
-        thumbView.isUserInteractionEnabled = false
-        return thumbView
-    }()
-
-    private lazy var grabberView: UIView = {
-        let grabberView: UIView
-        if #available(iOS 26.0, *) {
-            // same aspect ratio as a UISlider knob
-            grabberView = {
-                let grabberView = LiquidLensView(frame: .init(x: 0, y: 0, width: 18.5, height: 12))
-                grabberView.restingBackgroundColor = .white
-                return grabberView as UIView
-            }()
-            grabberView.layer.shadowPath = UIBezierPath(roundedRect: grabberView.bounds, cornerRadius: 6).cgPath
-        } else {
-            grabberView = UIView(frame: .init(x: 0, y: 0, width: 10, height: 10))
-            grabberView.backgroundColor = .white
-            grabberView.layer.shadowPath = UIBezierPath(roundedRect: grabberView.bounds, cornerRadius: 5).cgPath
-        }
-        grabberView.layer.shadowRadius = 1.5
-        grabberView.layer.shadowOffset = CGSize(width: 0, height: 1)
-        grabberView.layer.shadowColor = UIColor.black.cgColor
-        grabberView.layer.shadowOpacity = 0.1
-        grabberView.layer.cornerRadius = grabberView.frame.height / 2
-        return grabberView
-    }()
-
-    private static let trackInset: CGFloat = 5
-    private static let thumbWidth: CGFloat = 30
-
-    private var trackWidthConstraint: NSLayoutConstraint?
-    private var trackPositionConstraint: NSLayoutConstraint?
-    private var thumbPositionConstraint: NSLayoutConstraint?
-
-    private var previousLocation = CGPoint()
+    private let trackView = UIView()
+    private let fillView = UIView()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        configure()
-        constrain()
+        trackView.backgroundColor = Self.trackColor
+        trackView.layer.cornerRadius = Self.barHeight / 2
+        trackView.isUserInteractionEnabled = false
+        fillView.backgroundColor = Self.fillColor
+        fillView.layer.cornerRadius = Self.barHeight / 2
+        fillView.isUserInteractionEnabled = false
+        addSubview(trackView)
+        addSubview(fillView)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func configure() {
-        thumbView.addSubview(grabberView)
-
-        addSubview(trackView)
-        addSubview(progressedTrackView)
-        addSubview(thumbView)
-    }
-
-    func constrain() {
-        trackView.translatesAutoresizingMaskIntoConstraints = false
-        progressedTrackView.translatesAutoresizingMaskIntoConstraints = false
-        thumbView.translatesAutoresizingMaskIntoConstraints = false
-        grabberView.translatesAutoresizingMaskIntoConstraints = false
-
-        trackWidthConstraint = progressedTrackView.widthAnchor.constraint(equalToConstant: Self.trackInset)
-        trackWidthConstraint?.isActive = true
-        trackPositionConstraint = progressedTrackView.leadingAnchor.constraint(
-            equalTo: leadingAnchor,
-            constant: Self.trackInset
-        )
-        trackPositionConstraint?.isActive = true
-        thumbPositionConstraint = thumbView.leadingAnchor.constraint(
-            equalTo: leadingAnchor,
-            constant: Self.trackInset - Self.thumbWidth / 2
-        )
-        thumbPositionConstraint?.isActive = true
-
-        NSLayoutConstraint.activate([
-            trackView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: Self.trackInset),
-            trackView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -Self.trackInset),
-            trackView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            trackView.heightAnchor.constraint(equalToConstant: 3),
-
-            progressedTrackView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            progressedTrackView.heightAnchor.constraint(equalToConstant: 3),
-
-            thumbView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            thumbView.heightAnchor.constraint(equalToConstant: Self.thumbWidth),
-            thumbView.widthAnchor.constraint(equalToConstant: Self.thumbWidth),
-
-            grabberView.centerXAnchor.constraint(equalTo: thumbView.centerXAnchor),
-            grabberView.centerYAnchor.constraint(equalTo: thumbView.centerYAnchor),
-            grabberView.heightAnchor.constraint(equalToConstant: grabberView.bounds.height),
-            grabberView.widthAnchor.constraint(equalToConstant: grabberView.bounds.width)
-        ])
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.noIntrinsicMetric, height: Self.barHeight)
     }
 
     override func layoutSubviews() {
-        updateLayerFrames()
         super.layoutSubviews()
+        let barY = (bounds.height - Self.barHeight) / 2
+        trackView.frame = CGRect(x: 0, y: barY, width: bounds.width, height: Self.barHeight)
+
+        let fillWidth = bounds.width * currentValue
+        let x = direction == .forward ? 0 : bounds.width - fillWidth
+        fillView.frame = CGRect(x: x, y: barY, width: fillWidth, height: Self.barHeight)
     }
 
-    override func tintColorDidChange() {
-        progressedTrackView.backgroundColor = tintColor
+    // larger touch target than the visible bar
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        bounds.insetBy(dx: -8, dy: -16).contains(point)
     }
 
-    private func updateLayerFrames() {
-        guard bounds.width > Self.trackInset * 2 else { return }
-
-        let position = positionForValue(currentValue)
-        if direction == .forward {
-            trackWidthConstraint?.constant = position - Self.trackInset
-            thumbPositionConstraint?.constant = position - Self.thumbWidth / 2
-        } else {
-            trackWidthConstraint?.constant = bounds.width - Self.trackInset - position
-            thumbPositionConstraint?.constant = position + Self.thumbWidth / 2 - bounds.width
-        }
+    private func value(for touch: UITouch) -> CGFloat {
+        guard bounds.width > 0 else { return currentValue }
+        let x = min(max(touch.location(in: self).x, 0), bounds.width)
+        let fraction = x / bounds.width
+        let value = direction == .forward ? fraction : 1 - fraction
+        return minimumValue + (maximumValue - minimumValue) * value
     }
 }
 
 extension ReaderSliderView {
     override func beginTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
-        previousLocation = touch.location(in: self)
-
-        if thumbView.frame.contains(previousLocation) {
-            thumbView.tag = 1
-            UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseInOut) {
-                self.grabberView.transform = CGAffineTransform(scaleX: 3/2, y: 3/2)
-                if #available(iOS 26.0, *) {
-                    (self.grabberView as? LiquidLensView)?.setLifted(true, animated: true)
-                }
-            }
-            return true
-        }
-
-        return false
+        currentValue = value(for: touch)
+        sendActions(for: .valueChanged)
+        return true
     }
 
     override func continueTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
-        let location = touch.location(in: self)
-
-        let deltaLocation = location.x - previousLocation.x
-        let deltaValue = (maximumValue - minimumValue) * deltaLocation / bounds.width
-
-        previousLocation = location
-
-        if thumbView.tag == 1 {
-            if direction == .forward {
-                currentValue += deltaValue
-            } else {
-                currentValue -= deltaValue
-            }
-        }
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-
-        updateLayerFrames()
-
-        CATransaction.commit()
-
+        currentValue = value(for: touch)
         sendActions(for: .valueChanged)
-
         return true
     }
 
     override func endTracking(_ touch: UITouch?, with event: UIEvent?) {
-        thumbView.tag = 0
-        UIView.animate(withDuration: 0.2, delay: 0, options: .curveEaseInOut) {
-            self.grabberView.transform = .identity
-            if #available(iOS 26.0, *) {
-                (self.grabberView as? LiquidLensView)?.setLifted(false, animated: true)
-            }
-        }
         sendActions(for: .editingDidEnd)
     }
 
@@ -255,18 +106,5 @@ extension ReaderSliderView {
 extension ReaderSliderView {
     func move(toValue value: CGFloat) {
         currentValue = value
-    }
-
-    private func positionForValue(_ value: CGFloat) -> CGFloat {
-        let trackWidth = max(bounds.width - Self.trackInset * 2, 0)
-        if direction == .forward {
-            return Self.trackInset + trackWidth * value
-        } else {
-            return bounds.width - Self.trackInset - trackWidth * value
-        }
-    }
-
-    private func boundValue(_ value: CGFloat, toLowerValue lowerValue: CGFloat, upperValue: CGFloat) -> CGFloat {
-        min(max(value, lowerValue), upperValue)
     }
 }
