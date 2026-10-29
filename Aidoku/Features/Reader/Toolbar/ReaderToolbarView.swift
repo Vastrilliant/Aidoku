@@ -27,7 +27,7 @@ class ReaderToolbarView: UIView {
     }
 
     let sliderView = ReaderSliderView()
-    private let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+    private let blurView = ProgressiveBlurView()
     private let titleLabel = MarqueeLabelView()
     private let pageLabel = UILabel()
 
@@ -72,7 +72,7 @@ class ReaderToolbarView: UIView {
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         NSLayoutConstraint.activate([
-            blurView.topAnchor.constraint(equalTo: topAnchor),
+            blurView.topAnchor.constraint(equalTo: topAnchor, constant: -48),
             blurView.bottomAnchor.constraint(equalTo: bottomAnchor),
             blurView.leadingAnchor.constraint(equalTo: leadingAnchor),
             blurView.trailingAnchor.constraint(equalTo: trailingAnchor),
