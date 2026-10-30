@@ -70,6 +70,7 @@ class ReaderPageViewController: BaseObservingViewController {
     var doublePageRestorationConstraints: [NSLayoutConstraint] = []
 
     var shouldSkipImage: (@MainActor (UIImage) async -> Bool)?
+    var onPageBlacklisted: (@MainActor () -> Void)?
 
     /// Callback when image aspect ratio is updated
     var onAspectRatioUpdated: (() -> Void)?
@@ -192,6 +193,11 @@ class ReaderPageViewController: BaseObservingViewController {
         Task {
             let result = await pageView.setPage(page, sourceId: sourceId, skipProcessing: skipProcessing)
             guard self.page == page else { return }
+
+            if pageView.isBlacklisted, let onPageBlacklisted = self.onPageBlacklisted {
+                onPageBlacklisted()
+                return
+            }
 
             if
                 result,

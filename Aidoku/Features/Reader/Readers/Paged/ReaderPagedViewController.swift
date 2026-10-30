@@ -330,6 +330,10 @@ extension ReaderPagedViewController {
                 guard let self, let page else { return false }
                 return await self.handleBlacklistCheck(image: image, controller: page)
             }
+            page.onPageBlacklisted = { [weak self, weak page] in
+                guard let self, let page else { return }
+                _ = self.applyBlacklist(to: page)
+            }
             page.onImageisWideImage = { [weak self, weak page] isWide in
                 guard let self, let page, isWide else { return }
                 guard let vcIndex = self.pageViewControllers.firstIndex(of: page) else { return }
@@ -1416,7 +1420,8 @@ extension ReaderPagedViewController: UIContextMenuInteractionDelegate {
 
     @MainActor
     private func blacklistPage(image: UIImage) async {
-        await PageBlacklist.shared.add(image)
+        let source = pageViewControllers.compactMap(\.pageView).first { $0.imageView.image === image }
+        await PageBlacklist.shared.add(image, data: source?.originalImageData, url: source?.originalImageURL)
         for controller in pageViewControllers {
             guard
                 case .page = controller.type,
@@ -1502,6 +1507,11 @@ extension ReaderPagedViewController {
     @MainActor
     fileprivate func handleBlacklistCheck(image: UIImage, controller: ReaderPageViewController) async -> Bool {
         guard await PageBlacklist.shared.matches(image) else { return false }
+        return applyBlacklist(to: controller)
+    }
+
+    @MainActor
+    fileprivate func applyBlacklist(to controller: ReaderPageViewController) -> Bool {
         guard let vcIndex = pageViewControllers.firstIndex(of: controller) else { return true }
 
         let displayPage = pageIndex(from: vcIndex)

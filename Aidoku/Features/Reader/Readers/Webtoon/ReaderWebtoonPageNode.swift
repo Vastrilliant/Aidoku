@@ -60,6 +60,14 @@ class ReaderWebtoonPageNode: BaseObservingCellNode {
 
     private var currentImageRequest: ImageRequest?
 
+    var originalImageURL: URL? {
+        currentImageRequest?.url
+    }
+
+    var originalImageData: Data? {
+        currentImageRequest.flatMap { ImagePipeline.shared.cache.cachedData(for: $0) }
+    }
+
     var pillarbox = UserDefaults.standard.bool(forKey: "Reader.pillarbox")
     var pillarboxAmount = CGFloat(UserDefaults.standard.double(forKey: "Reader.pillarboxAmount"))
     var pillarboxOrientation = UserDefaults.standard.string(forKey: "Reader.pillarboxOrientation")
@@ -370,6 +378,9 @@ extension ReaderWebtoonPageNode {
         if shouldCropBorders {
             processors.append(CropBordersProcessor())
         }
+        if !PageBlacklist.shared.isEmpty {
+            processors.append(PageBlacklistProcessor())
+        }
         if shouldDownsample {
             processors.append(await DownsampleProcessor(width: width))
         } else if shouldUpscale {
@@ -409,6 +420,13 @@ extension ReaderWebtoonPageNode {
             }
         } catch {
             guard !Task.isCancelled else { return }
+
+            if error.isBlacklisted {
+                Task { @MainActor [weak self] in
+                    self?.markBlacklisted()
+                }
+                return
+            }
 
             switch error {
                 case .dataLoadingFailed, .dataIsEmpty:

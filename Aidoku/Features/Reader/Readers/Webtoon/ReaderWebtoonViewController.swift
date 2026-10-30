@@ -504,7 +504,7 @@ extension ReaderWebtoonViewController: UIContextMenuInteractionDelegate {
                 image: UIImage(systemName: "eye.slash")
             ) { _ in
                 Task { @MainActor in
-                    await self.blacklistPage(image: image)
+                    await self.blacklistPage(image: image, node: node)
                 }
             }
 
@@ -513,8 +513,8 @@ extension ReaderWebtoonViewController: UIContextMenuInteractionDelegate {
     }
 
     @MainActor
-    private func blacklistPage(image: UIImage) async {
-        await PageBlacklist.shared.add(image)
+    private func blacklistPage(image: UIImage, node: ReaderWebtoonPageNode) async {
+        await PageBlacklist.shared.add(image, data: node.originalImageData, url: node.originalImageURL)
         for (section, sectionPages) in pages.enumerated() {
             for item in sectionPages.indices {
                 let indexPath = IndexPath(item: item, section: section)

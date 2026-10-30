@@ -60,6 +60,15 @@ class ReaderPageView: UIView {
     // MARK: - Reload functionality properties
     private var currentPage: Page?
     private var currentImageRequest: ImageRequest?
+    private(set) var isBlacklisted = false
+
+    var originalImageURL: URL? {
+        currentImageRequest?.url
+    }
+
+    var originalImageData: Data? {
+        currentImageRequest.flatMap { ImagePipeline.shared.cache.cachedData(for: $0) }
+    }
 
     init(temporaryPageStore: ReaderTemporaryPageStore) {
         self.temporaryPageStore = temporaryPageStore
@@ -204,6 +213,9 @@ extension ReaderPageView {
         if UserDefaults.standard.bool(forKey: "Reader.cropBorders") {
             processors.append(CropBordersProcessor())
         }
+        if !PageBlacklist.shared.isEmpty {
+            processors.append(PageBlacklistProcessor())
+        }
         if UserDefaults.standard.bool(forKey: "Reader.downsampleImages") {
             processors.append(DownsampleProcessor(width: UIScreen.main.bounds.width))
         } else if UserDefaults.standard.bool(forKey: "Reader.upscaleImages") {
@@ -264,6 +276,7 @@ extension ReaderPageView {
     }
 
     private func startImageTask(_ request: ImageRequest) async -> Bool {
+        isBlacklisted = false
         imageTask = ImagePipeline.shared.loadImage(
             with: request,
             progress: { [weak self] _, completed, total in
@@ -286,6 +299,11 @@ extension ReaderPageView {
             completion?(true)
             return true
         } catch {
+            if error.isBlacklisted {
+                isBlacklisted = true
+                completion?(false)
+                return false
+            }
             // we can still send to image processor even if the request failed
             if request.userInfo[.processesKey] as? Bool == true {
                 let processor = request.processors.first(where: { $0 is PageInterceptorProcessor }) as? PageInterceptorProcessor

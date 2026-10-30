@@ -118,6 +118,31 @@ class ReaderViewController: BaseObservingViewController {
         return button
     }()
 
+    private lazy var optionsButton: UIButton = {
+        var configuration: UIButton.Configuration
+        if #available(iOS 26.0, *) {
+            configuration = .glass()
+        } else {
+            configuration = .filled()
+            configuration.baseBackgroundColor = .secondarySystemBackground
+        }
+        configuration.cornerStyle = .capsule
+        configuration.image = UIImage(
+            systemName: "ellipsis",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .thin)
+        )
+        configuration.baseForegroundColor = ReaderSliderView.fillColor
+        let button = UIButton(configuration: configuration)
+        button.showsMenuAsPrimaryAction = true
+        button.menu = UIMenu(children: [
+            UIDeferredMenuElement.uncached { [weak self] completion in
+                completion(self?.optionsMenuItems() ?? [])
+            }
+        ])
+        button.translatesAutoresizingMaskIntoConstraints = false
+        return button
+    }()
+
     private var squeezeTimer: Timer?
     private var longSqueezeTimer: Timer?
     private var squeezeStartTime: Date?
@@ -244,6 +269,7 @@ class ReaderViewController: BaseObservingViewController {
         view.addSubview(autoScrollButton)
         view.addSubview(toolbarView)
         view.addSubview(closeButton)
+        view.addSubview(optionsButton)
         view.addSubview(chapterNumberLabel)
         view.addSubview(skippedPagesLabel)
 
@@ -315,6 +341,11 @@ class ReaderViewController: BaseObservingViewController {
             closeButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
             closeButton.widthAnchor.constraint(equalToConstant: 47),
             closeButton.heightAnchor.constraint(equalToConstant: 47),
+
+            optionsButton.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
+            optionsButton.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -8),
+            optionsButton.widthAnchor.constraint(equalToConstant: 47),
+            optionsButton.heightAnchor.constraint(equalToConstant: 47),
 
             skippedPagesLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             skippedPagesLabel.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor)
@@ -631,6 +662,54 @@ extension ReaderViewController {
         )
         if currentReader == .text {
             vc.overrideUserInterfaceStyle = ReaderTextTheme.getInterfaceStyleOverride()
+        }
+        present(vc, animated: true)
+    }
+
+    private func optionsMenuItems() -> [UIMenuElement] {
+        let chapterListAction = UIAction(
+            title: NSLocalizedString("CHAPTERS"),
+            image: UIImage(systemName: "list.bullet")
+        ) { [weak self] _ in
+            self?.openChapterList()
+        }
+        let settingsAction = UIAction(
+            title: NSLocalizedString("READER_SETTINGS"),
+            image: UIImage(systemName: "gearshape")
+        ) { [weak self] _ in
+            self?.openReaderSettings()
+        }
+        let hasWebURL = chapter.url.map { $0.scheme == "http" || $0.scheme == "https" } ?? false
+        let webAction = UIAction(
+            title: NSLocalizedString("OPEN_WEBSITE"),
+            image: UIImage(systemName: "safari"),
+            attributes: hasWebURL ? [] : .disabled
+        ) { [weak self] _ in
+            self?.openWebView()
+        }
+        let blacklistAction = UIAction(
+            title: NSLocalizedString("BLACKLISTED_PAGES"),
+            image: UIImage(systemName: "eye.slash")
+        ) { [weak self] _ in
+            self?.openBlacklistedPages()
+        }
+        return [
+            UIMenu(options: .displayInline, children: [chapterListAction, settingsAction, webAction]),
+            UIMenu(options: .displayInline, children: [blacklistAction])
+        ]
+    }
+
+    @objc func openBlacklistedPages() {
+        (reader as? ReaderWebtoonViewController)?.stopAutoScroll()
+
+        var blacklistChanged = false
+        let vc = ReaderBlacklistedPagesHostingController(
+            rootView: ReaderBlacklistedPagesView { blacklistChanged = true }
+        )
+        vc.onDismiss = { [weak self] in
+            guard let self, blacklistChanged, self.currentPage >= 1 else { return }
+            self.forceStartPage = self.currentPage
+            self.loadCurrentChapter()
         }
         present(vc, animated: true)
     }
@@ -1594,10 +1673,12 @@ extension ReaderViewController {
 
             self.toolbarView.isHidden = false
             self.closeButton.isHidden = false
+            self.optionsButton.isHidden = false
             self.updateFloatingButtonConstraints()
             UIView.animate(withDuration: CATransaction.animationDuration()) {
                 self.toolbarView.alpha = 1
                 self.closeButton.alpha = 1
+                self.optionsButton.alpha = 1
                 self.chapterNumberLabel.alpha = 0
                 self.node.backgroundColor = if AppSettings.appearance.useSystemAppearance.get() {
                     .systemBackground
@@ -1628,6 +1709,7 @@ extension ReaderViewController {
             UIView.animate(withDuration: CATransaction.animationDuration()) {
                 self.toolbarView.alpha = 0
                 self.closeButton.alpha = 0
+                self.optionsButton.alpha = 0
                 self.chapterNumberLabel.alpha = 1
 
                 self.node.backgroundColor = switch UserDefaults.standard.string(forKey: "Reader.backgroundColor") {
@@ -1643,6 +1725,7 @@ extension ReaderViewController {
                 guard !self.barsVisible else { return }
                 self.toolbarView.isHidden = true
                 self.closeButton.isHidden = true
+                self.optionsButton.isHidden = true
             }
         }
     }

@@ -792,6 +792,12 @@
 "UNSET_AS_SINGLE_PAGE" = "Unset as Single Page";
 "RELOAD" = "Reload";
 "BLACKLIST_PAGE" = "Blacklist Page";
+"BLACKLISTED_PAGES" = "Blacklisted Pages";
+"NO_BLACKLISTED_PAGES" = "No Blacklisted Pages";
+"NO_BLACKLISTED_PAGES_TEXT" = "Pages you blacklist while reading will appear here.";
+"REMOVE_ALL" = "Remove All";
+"REMOVE_ALL_BLACKLISTED_PAGES" = "Remove All Blacklisted Pages";
+"REMOVE_ALL_BLACKLISTED_PAGES_CONFIRM" = "Are you sure you'd like to remove all blacklisted pages?";
 "%i_PAGES_SKIPPED" = "skipped %i pages";
 "ONE_PAGE_SKIPPED" = "skipped 1 page";
 "RELOAD_FAILED" = "Reload Failed";
