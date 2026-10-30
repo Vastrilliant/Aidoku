@@ -25,6 +25,15 @@ class ReaderToolbarView: UIView {
     var title: String? {
         didSet { titleLabel.text = title }
     }
+    var skippedPages: Set<Int> = [] {
+        didSet {
+            guard oldValue != skippedPages else { return }
+            updatePageLabel()
+            if !sliderView.isTracking {
+                updateSliderPosition()
+            }
+        }
+    }
 
     let sliderView = ReaderSliderView()
     private let fadeView = ReaderToolbarFadeView()
@@ -93,37 +102,42 @@ class ReaderToolbarView: UIView {
         ])
     }
 
+    private func visibleTotal(of totalPages: Int) -> Int {
+        max(totalPages - skippedPages.filter { $0 >= 1 && $0 <= totalPages }.count, 1)
+    }
+
+    private func visiblePage(_ page: Int, of totalPages: Int) -> Int {
+        let clamped = min(max(page, 1), totalPages)
+        let skippedBefore = skippedPages.filter { $0 >= 1 && $0 <= clamped }.count
+        return min(max(clamped - skippedBefore, 1), visibleTotal(of: totalPages))
+    }
+
     func displayPage(_ page: Int) {
         guard let totalPages = totalPages else {
             return
         }
-        var page = page
-        if page > totalPages {
-            page = totalPages
-        } else if page < 1 {
-            page = 1
-        }
-        pageLabel.text = String(format: NSLocalizedString("%i_OF_%i"), page, totalPages)
+        let page = visiblePage(page, of: totalPages)
+        pageLabel.text = String(format: NSLocalizedString("%i_OF_%i"), page, visibleTotal(of: totalPages))
         currentPageValue = page
     }
 
     func updatePageLabel() {
-        guard var currentPage = currentPage, let totalPages = totalPages else {
+        guard let currentPage = currentPage, let totalPages = totalPages else {
             pageLabel.text = nil
             return
         }
 
-        if currentPage > totalPages {
-            currentPage = totalPages
-        } else if currentPage < 1 {
-            currentPage = 1
-        }
-        pageLabel.text = String(format: NSLocalizedString("%i_OF_%i"), currentPage, totalPages)
+        pageLabel.text = String(
+            format: NSLocalizedString("%i_OF_%i"),
+            visiblePage(currentPage, of: totalPages),
+            visibleTotal(of: totalPages)
+        )
     }
 
     func updateSliderPosition() {
         guard let currentPage = currentPage, let totalPages = totalPages else { return }
-        sliderView.move(toValue: CGFloat(currentPage - 1) / max(CGFloat(totalPages - 1), 1))
+        let page = visiblePage(currentPage, of: totalPages)
+        sliderView.move(toValue: CGFloat(page - 1) / max(CGFloat(visibleTotal(of: totalPages) - 1), 1))
     }
 }
 

@@ -174,11 +174,14 @@ class VerticalContentOffsetPreservingLayout: UICollectionViewFlowLayout {
     private func isCollapsed(at indexPath: IndexPath) -> Bool {
         guard
             let collectionView = collectionView as? ASCollectionView,
-            let node = collectionView.collectionNode?.nodeForItem(at: indexPath) as? ReaderWebtoonPageNode
+            let node = collectionView.collectionNode?.nodeForItem(at: indexPath)
         else {
             return false
         }
-        return node.isBlacklisted
+        if let transitionNode = node as? ReaderWebtoonTransitionNode {
+            return transitionNode.isCollapsed
+        }
+        return (node as? ReaderWebtoonPageNode)?.isBlacklisted ?? false
     }
 
     func getHeight(for indexPath: IndexPath) -> CGFloat {

@@ -10,6 +10,7 @@ import AsyncDisplayKit
 class ReaderWebtoonTransitionNode: BaseObservingCellNode {
     let transition: Transition
     let pillarboxLayoutState: ReaderPillarboxLayoutState
+    let isCollapsed: Bool
 
     var pillarbox = UserDefaults.standard.bool(forKey: "Reader.pillarbox")
     var pillarboxAmount: CGFloat = CGFloat(UserDefaults.standard.double(forKey: "Reader.pillarboxAmount"))
@@ -17,9 +18,10 @@ class ReaderWebtoonTransitionNode: BaseObservingCellNode {
 
     private lazy var transitionNode = ReaderTransitionNode(transition: transition)
 
-    init(transition: Transition, pillarboxLayoutState: ReaderPillarboxLayoutState) {
+    init(transition: Transition, pillarboxLayoutState: ReaderPillarboxLayoutState, isCollapsed: Bool = false) {
         self.transition = transition
         self.pillarboxLayoutState = pillarboxLayoutState
+        self.isCollapsed = isCollapsed
 
         super.init()
 
@@ -44,6 +46,9 @@ class ReaderWebtoonTransitionNode: BaseObservingCellNode {
     }
 
     override func layoutSpecThatFits(_ constrainedSize: ASSizeRange) -> ASLayoutSpec {
+        if isCollapsed {
+            return ASLayoutSpec()
+        }
         transitionNode.referenceWidth = constrainedSize.max.width
 
         if pillarbox && isPillarboxOrientation() {

@@ -79,13 +79,14 @@ class ReaderSliderView: UIControl {
     }
 
     private func setExpanded(_ expanded: Bool) {
-        currentBarHeight = expanded ? Self.expandedBarHeight : Self.barHeight
+        let targetHeight = expanded ? Self.expandedBarHeight : Self.barHeight
+        guard currentBarHeight != targetHeight else { return }
+        currentBarHeight = targetHeight
+        setNeedsLayout()
         UIView.animate(
             withDuration: 0.25,
             delay: 0,
-            usingSpringWithDamping: 0.8,
-            initialSpringVelocity: 0,
-            options: [.beginFromCurrentState, .allowUserInteraction]
+            options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseInOut]
         ) {
             self.layoutIfNeeded()
         }

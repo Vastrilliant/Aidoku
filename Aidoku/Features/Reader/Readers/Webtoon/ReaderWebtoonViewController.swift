@@ -61,6 +61,7 @@ class ReaderWebtoonViewController: ZoomableCollectionViewController {
 
     // Indexes of blacklisted pages that were skipped, per chapter key
     private var skippedPages: [String: Set<Int>] = [:]
+    private var reportedSkippedChapterKey: String?
 
     private var autoScrollDisplayLink: CADisplayLink?
     private var autoScrollLastTimestamp: CFTimeInterval?
@@ -392,6 +393,10 @@ extension ReaderWebtoonViewController {
             }
         }
 
+        if chapter.key != reportedSkippedChapterKey {
+            reportSkippedPages()
+        }
+
         // update page number
         let page = getCurrentPage()
         if previousPage != page {
@@ -524,13 +529,20 @@ extension ReaderWebtoonViewController: UIContextMenuInteractionDelegate {
     }
 
     func pageNodeDidBlacklist(_ node: ReaderWebtoonPageNode) {
-        skippedPages[node.page.chapterId, default: []].insert(node.page.index)
+        guard
+            let indexPath = collectionNode.indexPath(for: node),
+            let sectionPages = pages[safe: indexPath.section]
+        else { return }
+        let hasStartInfo = sectionPages.first?.type != .imagePage
+        let pageNumber = indexPath.item + (hasStartInfo ? 0 : 1)
+        guard pageNumber >= 1 else { return }
+        skippedPages[node.page.chapterId, default: []].insert(pageNumber)
         reportSkippedPages()
     }
 
     private func reportSkippedPages() {
-        let count = chapter.flatMap { skippedPages[$0.key]?.count } ?? 0
-        delegate?.setSkippedPages(count)
+        reportedSkippedChapterKey = chapter?.key
+        delegate?.setSkippedPages(chapter.flatMap { skippedPages[$0.key] } ?? [])
     }
 
     /// Reloads the page image for the given webtoon page node
@@ -665,7 +677,7 @@ extension ReaderWebtoonViewController {
         // prepend previous chapter
         if !loadingPrevious {
             let topPath = getCurrentPagePath(pos: .top)
-            if topPath == nil || (topPath?.section == 0 && topPath?.row == 0) {
+            if topPath == nil || (topPath?.section == 0 && (topPath?.row ?? 0) <= 1) {
                 loadingPrevious = true
                 Task {
                     await prependPreviousChapter()
@@ -964,7 +976,8 @@ extension ReaderWebtoonViewController: ReaderReaderDelegate {
         updateDoubleTapZoomSetting()
         chapters = [chapter]
         skippedPages = [:]
-        delegate?.setSkippedPages(0)
+        reportedSkippedChapterKey = chapter.key
+        delegate?.setSkippedPages([])
 
         Task {
             await viewModel.loadPages(chapter: chapter)
@@ -1081,6 +1094,7 @@ extension ReaderWebtoonViewController: ASCollectionDataSource {
             let to = page.type == .prevInfoPage
                 ? self.delegate?.getPreviousChapter()
                 : self.delegate?.getNextChapter()
+            let collapsed = self.infinite
             return {
                 ReaderWebtoonTransitionNode(
                     transition: .init(
@@ -1088,7 +1102,8 @@ extension ReaderWebtoonViewController: ASCollectionDataSource {
                         from: chapter,
                         to: to
                     ),
-                    pillarboxLayoutState: self.pillarboxLayoutState
+                    pillarboxLayoutState: self.pillarboxLayoutState,
+                    isCollapsed: collapsed
                 )
             }
         }

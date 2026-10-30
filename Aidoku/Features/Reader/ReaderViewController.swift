@@ -98,6 +98,31 @@ class ReaderViewController: BaseObservingViewController {
         return label
     }()
 
+    private lazy var chapterChangeLabel: UILabel = {
+        let label = UILabel()
+        label.font = ReaderFont.publico(size: 16)
+        label.textColor = ReaderSliderView.fillColor
+        label.textAlignment = .center
+        label.numberOfLines = 1
+        label.alpha = 0
+        label.isHidden = true
+        label.isUserInteractionEnabled = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
+    private lazy var topInfoStack: UIStackView = {
+        let stack = UIStackView(arrangedSubviews: [chapterChangeLabel, skippedPagesLabel])
+        stack.axis = .vertical
+        stack.alignment = .center
+        stack.spacing = 2
+        stack.isUserInteractionEnabled = false
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        return stack
+    }()
+
+    private var chapterChangeHideWorkItem: DispatchWorkItem?
+
     private lazy var closeButton: UIButton = {
         var configuration: UIButton.Configuration
         if #available(iOS 26.0, *) {
@@ -271,7 +296,7 @@ class ReaderViewController: BaseObservingViewController {
         view.addSubview(closeButton)
         view.addSubview(optionsButton)
         view.addSubview(chapterNumberLabel)
-        view.addSubview(skippedPagesLabel)
+        view.addSubview(topInfoStack)
 
         // loading indicator
         activityIndicator.startAnimating()
@@ -343,12 +368,14 @@ class ReaderViewController: BaseObservingViewController {
             closeButton.heightAnchor.constraint(equalToConstant: 47),
 
             optionsButton.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
-            optionsButton.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -8),
+            optionsButton.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 16),
             optionsButton.widthAnchor.constraint(equalToConstant: 47),
             optionsButton.heightAnchor.constraint(equalToConstant: 47),
 
-            skippedPagesLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            skippedPagesLabel.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor)
+            topInfoStack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            topInfoStack.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
+            topInfoStack.leadingAnchor.constraint(greaterThanOrEqualTo: optionsButton.trailingAnchor, constant: 8),
+            topInfoStack.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -8)
         ])
         updateFloatingButtonConstraints()
 
@@ -845,7 +872,7 @@ extension ReaderViewController {
                 webtoonReader.stopAutoScroll()
             }
             reader?.remove()
-            setSkippedPages(0)
+            setSkippedPages([])
             pageController.delegate = self
             reader = pageController
             add(child: pageController, below: descriptionButtonController.view)
@@ -1131,10 +1158,52 @@ extension ReaderViewController: @MainActor ReaderHoldingDelegate {
         configureDictionaryLookupGesture()
         configureDictionaryOverlayInteractionMode()
         loadNavbarTitle()
-        setSkippedPages(0)
+        setSkippedPages([])
+        showChapterChangeLabel()
     }
 
-    func setSkippedPages(_ count: Int) {
+    private func showChapterChangeLabel() {
+        chapterChangeHideWorkItem?.cancel()
+        chapterChangeLabel.text = toolbarView.title
+        UIView.animate(
+            withDuration: 0.3,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseInOut]
+        ) {
+            self.chapterChangeLabel.isHidden = false
+            self.chapterChangeLabel.alpha = 1
+            self.view.layoutIfNeeded()
+        }
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.hideChapterChangeLabel()
+        }
+        chapterChangeHideWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: workItem)
+    }
+
+    private func hideChapterChangeLabel() {
+        UIView.animate(
+            withDuration: 0.3,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseInOut]
+        ) {
+            self.chapterChangeLabel.alpha = 0
+        } completion: { finished in
+            guard finished, self.chapterChangeLabel.alpha == 0 else { return }
+            UIView.animate(
+                withDuration: 0.3,
+                delay: 0,
+                options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseInOut]
+            ) {
+                self.chapterChangeLabel.isHidden = true
+                self.view.layoutIfNeeded()
+            }
+        }
+    }
+
+    func setSkippedPages(_ pages: Set<Int>) {
+        toolbarView.skippedPages = pages
+        let count = pages.count
         guard count > 0 else {
             skippedPagesLabel.text = nil
             skippedPagesLabel.isHidden = true

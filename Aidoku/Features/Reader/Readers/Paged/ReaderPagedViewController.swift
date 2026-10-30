@@ -6,6 +6,7 @@
 //
 
 import AidokuRunner
+import Nuke
 import UIKit
 import VisionKit
 
@@ -54,6 +55,9 @@ class ReaderPagedViewController: BaseObservingViewController {
     private var skippedActualPages: Set<Int> = []
     private var previousPreviewSkipped = false
     private var nextPreviewSkipped = false
+    private var nextScannedChapterKey: String?
+    private var nextScannedSkipped: Set<Int> = []
+    private var nextScannedCount = 0
     private var lastMoveBackward = false
 
     private var isTransitioning = false
@@ -470,6 +474,29 @@ extension ReaderPagedViewController {
         }
     }
 
+    /// Load the last page of the previous chapter into its preview controller.
+    func preloadPreviousChapter() {
+        guard
+            let previousChapter,
+            let previewController = pageViewControllers.first,
+            case .page = previewController.type
+        else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            await viewModel.preload(chapter: previousChapter)
+            guard
+                previousChapter == self.previousChapter,
+                let lastPage = viewModel.preloadedPages.last,
+                let previewController = pageViewControllers.first,
+                case .page = previewController.type
+            else { return }
+            previewController.setPage(
+                lastPage,
+                sourceId: viewModel.source?.key ?? viewModel.manga.sourceKey
+            )
+        }
+    }
+
     /// Fetch the first `pageCount` pages of the next chapter ahead of time.
     func preloadNextChapter(pageCount: Int) {
         guard pageCount > 0, let nextChapter else { return }
@@ -506,6 +533,54 @@ extension ReaderPagedViewController {
                 chapterKey: nextChapter.key,
                 sourceKey: sourceKey
             )
+
+            await scanBlacklist(
+                of: pages,
+                count: max(pageCount, pagesToPreload),
+                chapter: nextChapter,
+                sourceKey: sourceKey
+            )
+        }
+    }
+
+    /// Decode the first pages of the next chapter ahead of time, so blacklisted ones are known before they are shown.
+    private func scanBlacklist(
+        of pages: [Page],
+        count: Int,
+        chapter: AidokuRunner.Chapter,
+        sourceKey: String
+    ) async {
+        guard !PageBlacklist.shared.isEmpty else { return }
+        if nextScannedChapterKey != chapter.key {
+            nextScannedChapterKey = chapter.key
+            nextScannedSkipped = []
+            nextScannedCount = 0
+        }
+        let target = min(count, pages.count)
+        guard target > nextScannedCount else { return }
+
+        let source = await SourceManager.shared.source(for: sourceKey)
+        while nextScannedCount < target {
+            guard !Task.isCancelled, chapter == nextChapter, nextScannedChapterKey == chapter.key else { return }
+            let index = nextScannedCount
+            let page = pages[index]
+            if
+                page.image == nil,
+                page.zipURL == nil,
+                let imageURL = page.imageURL,
+                let url = URL(string: imageURL),
+                !url.isFileURL
+            {
+                let request = await ReaderPageView.imageRequest(url: url, context: page.context, source: source)
+                do {
+                    _ = try await ImagePipeline.shared.imageTask(with: request).response
+                } catch {
+                    if (error as? ImagePipeline.Error)?.isBlacklisted == true {
+                        nextScannedSkipped.insert(index + 1)
+                    }
+                }
+            }
+            nextScannedCount = index + 1
         }
     }
 
@@ -900,15 +975,20 @@ extension ReaderPagedViewController: ReaderReaderDelegate {
         }
     }
 
+    private func sliderDisplayPage(for value: CGFloat) -> Int {
+        let visiblePages = (1...max(displayPageCount, 1)).filter { !isSkipped(displayPage: $0) }
+        guard !visiblePages.isEmpty else { return 1 }
+        let index = Int(round(min(max(value, 0), 1) * CGFloat(visiblePages.count - 1)))
+        return visiblePages[index]
+    }
+
     func sliderMoved(value: CGFloat) {
-        let displayPage = Int(round(value * CGFloat(displayPageCount - 1))) + 1
-        let actualPage = actualPageIndex(from: displayPage)
+        let actualPage = actualPageIndex(from: sliderDisplayPage(for: value))
         delegate?.displayPage(actualPage)
     }
 
     func sliderStopped(value: CGFloat) {
-        let displayPage = Int(round(value * CGFloat(displayPageCount - 1))) + 1
-        move(toPage: displayPage, animated: false)
+        move(toPage: sliderDisplayPage(for: value), animated: false)
     }
 
     func setChapter(_ chapter: AidokuRunner.Chapter, startPage: Int) {
@@ -940,14 +1020,22 @@ extension ReaderPagedViewController: ReaderReaderDelegate {
                     var carried: Set<Int> = []
                     if chapter == previousChapter, previousPreviewSkipped {
                         carried.insert(viewModel.pages.count)
-                    } else if chapter == nextChapter, nextPreviewSkipped {
-                        carried.insert(1)
+                    } else if chapter == nextChapter {
+                        if nextPreviewSkipped {
+                            carried.insert(1)
+                        }
+                        if nextScannedChapterKey == chapter.key {
+                            carried.formUnion(nextScannedSkipped.filter { $0 <= viewModel.pages.count })
+                        }
                     }
                     skippedActualPages = carried
                     previousPreviewSkipped = false
                     nextPreviewSkipped = false
+                    nextScannedChapterKey = nil
+                    nextScannedSkipped = []
+                    nextScannedCount = 0
                 }
-                delegate?.setSkippedPages(skippedActualPages.count)
+                delegate?.setSkippedPages(skippedActualPages)
 
                 updatePageLayout()
                 loadPageControllers(chapter: chapter)
@@ -1037,24 +1125,10 @@ extension ReaderPagedViewController: UIPageViewControllerDelegate {
                 // move previous
                 loadPreviousChapter()
 
-            case 0: // previous chapter transition page
-                delegate?.setCurrentPage(0, position: nil)
-                // preload previous
-                if let previousChapter = previousChapter {
-                    Task {
-                        await viewModel.preload(chapter: previousChapter)
-                        if currentIndex > 0, let lastPage = viewModel.preloadedPages.last {
-                            pageViewControllers[currentIndex - 1].setPage(
-                                lastPage,
-                                sourceId: viewModel.source?.key ?? viewModel.manga.sourceKey
-                            )
-                        }
-                    }
-                }
+            case 0: // previous chapter transition page (never displayed)
+                preloadPreviousChapter()
 
-            case displayPageCount + 1: // next chapter transition page
-                delegate?.setCurrentPage(displayPageCount + 1, position: nil)
-                // preload next
+            case displayPageCount + 1: // next chapter transition page (never displayed)
                 preloadNextChapter(pageCount: pagesToPreload)
 
             case displayPageCount + 2: // next chapter first page
@@ -1085,6 +1159,9 @@ extension ReaderPagedViewController: UIPageViewControllerDelegate {
                     delegate?.setCurrentPages(actualPage...min(actualPage + 1, viewModel.pages.count))
                 } else {
                     delegate?.setCurrentPage(actualPage, position: nil)
+                }
+                if page <= 2 {
+                    preloadPreviousChapter()
                 }
                 // preload 1 before and pagesToPreload ahead
                 loadPages(in: page - 1 - (usesDoublePages ? 1 : 0)...page + pagesToPreload + (usesDoublePages ? 1 : 0))
@@ -1176,17 +1253,21 @@ extension ReaderPagedViewController: UIPageViewControllerDataSource {
         }
         if !usesDoublePages {
             var next = currentIndex + 1
-            while next < pageViewControllers.count, isSkipped(displayPage: pageIndex(from: next)) {
+            while next < pageViewControllers.count, isHiddenController(at: next) {
                 next += 1
             }
             return pageViewControllers[safe: next]
         }
-        if currentIndex + 1 < pageViewControllers.count {
-            if usesDoublePages && currentIndex + 2 < pageViewControllers.count {
-                let firstPage = pageViewControllers[currentIndex + 1]
-                let secondPage = pageViewControllers[currentIndex + 2]
+        var after = currentIndex + 1
+        while after < pageViewControllers.count, isInfoController(at: after) {
+            after += 1
+        }
+        if after < pageViewControllers.count {
+            if usesDoublePages && after + 1 < pageViewControllers.count {
+                let firstPage = pageViewControllers[after]
+                let secondPage = pageViewControllers[after + 1]
                 if case .page = firstPage.type, case .page = secondPage.type {
-                    let page = pageIndex(from: currentIndex + 1)
+                    let page = pageIndex(from: after)
                     if
                         spreadStart(for: page) == page,
                         let double = createPageController(firstPage: firstPage, secondPage: secondPage, page: page)
@@ -1195,7 +1276,7 @@ extension ReaderPagedViewController: UIPageViewControllerDataSource {
                     }
                 }
             }
-            return pageViewControllers[currentIndex + 1]
+            return pageViewControllers[after]
         }
         return nil
     }
@@ -1206,17 +1287,21 @@ extension ReaderPagedViewController: UIPageViewControllerDataSource {
         }
         if !usesDoublePages {
             var previous = currentIndex - 1
-            while previous >= 0, isSkipped(displayPage: pageIndex(from: previous)) {
+            while previous >= 0, isHiddenController(at: previous) {
                 previous -= 1
             }
             return pageViewControllers[safe: previous]
         }
-        if currentIndex - 1 >= 0 {
-            if usesDoublePages && currentIndex - 2 >= 0 {
-                let firstPage = pageViewControllers[currentIndex - 2]
-                let secondPage = pageViewControllers[currentIndex - 1]
+        var before = currentIndex - 1
+        while before >= 0, isInfoController(at: before) {
+            before -= 1
+        }
+        if before >= 0 {
+            if usesDoublePages && before - 1 >= 0 {
+                let firstPage = pageViewControllers[before - 1]
+                let secondPage = pageViewControllers[before]
                 if case .page = firstPage.type, case .page = secondPage.type {
-                    let page = pageIndex(from: currentIndex - 2)
+                    let page = pageIndex(from: before - 1)
                     if
                         spreadStart(for: page) == page,
                         let double = createPageController(firstPage: firstPage, secondPage: secondPage, page: page)
@@ -1225,9 +1310,19 @@ extension ReaderPagedViewController: UIPageViewControllerDataSource {
                     }
                 }
             }
-            return pageViewControllers[currentIndex - 1]
+            return pageViewControllers[before]
         }
         return nil
+    }
+
+    private func isInfoController(at index: Int) -> Bool {
+        guard pageViewControllers.indices.contains(index) else { return false }
+        if case .info = pageViewControllers[index].type { return true }
+        return false
+    }
+
+    private func isHiddenController(at index: Int) -> Bool {
+        isInfoController(at: index) || isSkipped(displayPage: pageIndex(from: index))
     }
 }
 
@@ -1526,7 +1621,7 @@ extension ReaderPagedViewController {
         }
 
         if skippedActualPages.insert(actualPage).inserted {
-            delegate?.setSkippedPages(skippedActualPages.count)
+            delegate?.setSkippedPages(skippedActualPages)
         }
         if !isTransitioning, isSkipped(displayPage: currentPage) {
             move(

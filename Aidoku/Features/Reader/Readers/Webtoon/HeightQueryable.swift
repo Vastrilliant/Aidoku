@@ -28,7 +28,7 @@ extension ReaderWebtoonPageNode: HeightQueryable {
 
 extension ReaderWebtoonTransitionNode: HeightQueryable {
     func getHeight(for size: CGSize) -> CGFloat {
-        guard size.width > 0 else { return 0 }
+        guard size.width > 0, !isCollapsed else { return 0 }
 
         if pillarbox && isPillarboxOrientation() {
             return size.width * (100 - pillarboxAmount) / 100
