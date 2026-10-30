@@ -86,6 +86,18 @@ class ReaderViewController: BaseObservingViewController {
         return label
     }()
 
+    private lazy var skippedPagesLabel: UILabel = {
+        let label = UILabel()
+        label.font = ReaderFont.publico(size: 11)
+        label.textColor = ReaderSliderView.fillColor
+        label.textAlignment = .center
+        label.numberOfLines = 1
+        label.isHidden = true
+        label.isUserInteractionEnabled = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+        return label
+    }()
+
     private lazy var closeButton: UIButton = {
         var configuration: UIButton.Configuration
         if #available(iOS 26.0, *) {
@@ -97,7 +109,7 @@ class ReaderViewController: BaseObservingViewController {
         configuration.cornerStyle = .capsule
         configuration.image = UIImage(
             systemName: "xmark",
-            withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .bold)
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 18, weight: .thin)
         )
         configuration.baseForegroundColor = ReaderSliderView.fillColor
         let button = UIButton(configuration: configuration)
@@ -233,6 +245,7 @@ class ReaderViewController: BaseObservingViewController {
         view.addSubview(toolbarView)
         view.addSubview(closeButton)
         view.addSubview(chapterNumberLabel)
+        view.addSubview(skippedPagesLabel)
 
         // loading indicator
         activityIndicator.startAnimating()
@@ -300,8 +313,11 @@ class ReaderViewController: BaseObservingViewController {
 
             closeButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
             closeButton.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -16),
-            closeButton.widthAnchor.constraint(equalToConstant: 52),
-            closeButton.heightAnchor.constraint(equalToConstant: 52)
+            closeButton.widthAnchor.constraint(equalToConstant: 47),
+            closeButton.heightAnchor.constraint(equalToConstant: 47),
+
+            skippedPagesLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            skippedPagesLabel.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor)
         ])
         updateFloatingButtonConstraints()
 
@@ -574,7 +590,9 @@ extension ReaderViewController {
     }
 
     func loadNavbarTitle() {
-        toolbarView.title = manga.title
+        toolbarView.title = chapter.chapterNumber.map {
+            String(format: NSLocalizedString("CHAPTER_X"), Double($0))
+        } ?? chapter.formattedTitle()
         chapterNumberLabel.text = chapter.chapterNumber.map { String(format: "%g", Double($0)) }
         // re-apply theme colors
         updateTextThemeOverride()
@@ -748,6 +766,7 @@ extension ReaderViewController {
                 webtoonReader.stopAutoScroll()
             }
             reader?.remove()
+            setSkippedPages(0)
             pageController.delegate = self
             reader = pageController
             add(child: pageController, below: descriptionButtonController.view)
@@ -1033,6 +1052,19 @@ extension ReaderViewController: @MainActor ReaderHoldingDelegate {
         configureDictionaryLookupGesture()
         configureDictionaryOverlayInteractionMode()
         loadNavbarTitle()
+        setSkippedPages(0)
+    }
+
+    func setSkippedPages(_ count: Int) {
+        guard count > 0 else {
+            skippedPagesLabel.text = nil
+            skippedPagesLabel.isHidden = true
+            return
+        }
+        skippedPagesLabel.text = count == 1
+            ? NSLocalizedString("ONE_PAGE_SKIPPED")
+            : String(format: NSLocalizedString("%i_PAGES_SKIPPED"), count)
+        skippedPagesLabel.isHidden = false
     }
 
     func setCurrentPage(_ page: Int, position: Double? = nil) {

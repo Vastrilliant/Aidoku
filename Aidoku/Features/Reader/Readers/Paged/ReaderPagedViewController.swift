@@ -51,6 +51,11 @@ class ReaderPagedViewController: BaseObservingViewController {
     private var previousPreviewSplitPages: [Page]?
     private var nextPreviewSplitPages: [Page]?
 
+    private var skippedActualPages: Set<Int> = []
+    private var previousPreviewSkipped = false
+    private var nextPreviewSkipped = false
+    private var lastMoveBackward = false
+
     private var isTransitioning = false
     private var programmaticMove = false
     private var pendingSpreadRebuild = false
@@ -321,6 +326,10 @@ extension ReaderPagedViewController {
             bindDictionaryOverlayTap(to: page)
         }
         if hasImageCallbacks {
+            page.shouldSkipImage = { [weak self, weak page] image in
+                guard let self, let page else { return false }
+                return await self.handleBlacklistCheck(image: image, controller: page)
+            }
             page.onImageisWideImage = { [weak self, weak page] isWide in
                 guard let self, let page, isWide else { return }
                 guard let vcIndex = self.pageViewControllers.firstIndex(of: page) else { return }
@@ -352,7 +361,10 @@ extension ReaderPagedViewController {
     }
 
     func move(toPage page: Int, animated: Bool, resetGesture: Bool = true) {
-        let page = min(max(page, 0), displayPageCount + 1)
+        var page = min(max(page, 0), displayPageCount + 1)
+        if isSkipped(displayPage: page) {
+            page = nearestVisiblePage(from: page, forward: !lastMoveBackward)
+        }
         let vcIndex = page + (previousChapter != nil ? 1 : 0)
         var targetViewController: UIViewController = pageViewControllers[vcIndex]
 
@@ -920,6 +932,19 @@ extension ReaderPagedViewController: ReaderReaderDelegate {
                 }
                 splitPages = [:]
 
+                if isChapterChange {
+                    var carried: Set<Int> = []
+                    if chapter == previousChapter, previousPreviewSkipped {
+                        carried.insert(viewModel.pages.count)
+                    } else if chapter == nextChapter, nextPreviewSkipped {
+                        carried.insert(1)
+                    }
+                    skippedActualPages = carried
+                    previousPreviewSkipped = false
+                    nextPreviewSkipped = false
+                }
+                delegate?.setSkippedPages(skippedActualPages.count)
+
                 updatePageLayout()
                 loadPageControllers(chapter: chapter)
 
@@ -1000,6 +1025,8 @@ extension ReaderPagedViewController: UIPageViewControllerDelegate {
             return
         }
         let page = currentIndex + (previousChapter != nil ? -1 : 0)
+        let previousIndex = previousViewControllers.first.flatMap { getIndex(of: $0, pos: .first) }
+        lastMoveBackward = previousIndex.map { $0 > currentIndex } ?? false
         switch page {
             case -1: // previous chapter last page
                 pendingSpreadRebuild = false
@@ -1032,6 +1059,15 @@ extension ReaderPagedViewController: UIPageViewControllerDelegate {
                 loadNextChapter()
 
             default:
+                if isSkipped(displayPage: page) {
+                    programmaticMove = false
+                    move(
+                        toPage: nearestVisiblePage(from: page, forward: !lastMoveBackward),
+                        animated: false,
+                        resetGesture: false
+                    )
+                    return
+                }
                 if !programmaticMove {
                     currentPage = page
                 }
@@ -1134,6 +1170,13 @@ extension ReaderPagedViewController: UIPageViewControllerDataSource {
         guard let currentIndex = getIndex(of: viewController, pos: .second) else {
             return nil
         }
+        if !usesDoublePages {
+            var next = currentIndex + 1
+            while next < pageViewControllers.count, isSkipped(displayPage: pageIndex(from: next)) {
+                next += 1
+            }
+            return pageViewControllers[safe: next]
+        }
         if currentIndex + 1 < pageViewControllers.count {
             if usesDoublePages && currentIndex + 2 < pageViewControllers.count {
                 let firstPage = pageViewControllers[currentIndex + 1]
@@ -1156,6 +1199,13 @@ extension ReaderPagedViewController: UIPageViewControllerDataSource {
     func getPageController(before viewController: UIViewController) -> UIViewController? {
         guard let currentIndex = getIndex(of: viewController, pos: .first) else {
             return nil
+        }
+        if !usesDoublePages {
+            var previous = currentIndex - 1
+            while previous >= 0, isSkipped(displayPage: pageIndex(from: previous)) {
+                previous -= 1
+            }
+            return pageViewControllers[safe: previous]
         }
         if currentIndex - 1 >= 0 {
             if usesDoublePages && currentIndex - 2 >= 0 {
@@ -1312,7 +1362,17 @@ extension ReaderPagedViewController: UIContextMenuInteractionDelegate {
                 }
             }
 
-            var actions = [shareAction, saveToPhotosAction, reloadAction]
+            let blacklistAction = UIAction(
+                title: NSLocalizedString("BLACKLIST_PAGE"),
+                image: UIImage(systemName: "eye.slash")
+            ) { _ in
+                guard let image = pageView.image else { return }
+                Task { @MainActor in
+                    await self.blacklistPage(image: image)
+                }
+            }
+
+            var actions = [shareAction, saveToPhotosAction, reloadAction, blacklistAction]
 
             if self.usesDoublePages {
                 for (index, pageViewController) in self.pageViewControllers.enumerated() {
@@ -1352,6 +1412,19 @@ extension ReaderPagedViewController: UIContextMenuInteractionDelegate {
 
             return UIMenu(title: "", children: actions)
         })
+    }
+
+    @MainActor
+    private func blacklistPage(image: UIImage) async {
+        await PageBlacklist.shared.add(image)
+        for controller in pageViewControllers {
+            guard
+                case .page = controller.type,
+                let pageImage = controller.pageView?.imageView.image,
+                let check = controller.shouldSkipImage
+            else { continue }
+            _ = await check(pageImage)
+        }
     }
 
     @MainActor
@@ -1408,6 +1481,51 @@ extension ReaderPagedViewController: UIContextMenuInteractionDelegate {
             return pageViewController.page?.language
         }
         return nil
+    }
+}
+
+// MARK: - Page Blacklist
+extension ReaderPagedViewController {
+    fileprivate func isSkipped(displayPage: Int) -> Bool {
+        guard displayPage >= 1, displayPage <= displayPageCount else { return false }
+        return skippedActualPages.contains(actualPageIndex(from: displayPage))
+    }
+
+    fileprivate func nearestVisiblePage(from page: Int, forward: Bool) -> Int {
+        var target = page
+        while isSkipped(displayPage: target) {
+            target += forward ? 1 : -1
+        }
+        return target
+    }
+
+    @MainActor
+    fileprivate func handleBlacklistCheck(image: UIImage, controller: ReaderPageViewController) async -> Bool {
+        guard await PageBlacklist.shared.matches(image) else { return false }
+        guard let vcIndex = pageViewControllers.firstIndex(of: controller) else { return true }
+
+        let displayPage = pageIndex(from: vcIndex)
+        let actualPage = actualPageIndex(from: displayPage)
+        if displayPage <= 0 {
+            previousPreviewSkipped = true
+            return true
+        }
+        if actualPage > viewModel.pages.count {
+            nextPreviewSkipped = true
+            return true
+        }
+
+        if skippedActualPages.insert(actualPage).inserted {
+            delegate?.setSkippedPages(skippedActualPages.count)
+        }
+        if !isTransitioning, isSkipped(displayPage: currentPage) {
+            move(
+                toPage: nearestVisiblePage(from: currentPage, forward: !lastMoveBackward),
+                animated: false,
+                resetGesture: false
+            )
+        }
+        return true
     }
 }
 

@@ -27,7 +27,7 @@ class ReaderToolbarView: UIView {
     }
 
     let sliderView = ReaderSliderView()
-    private let blurView = ProgressiveBlurView()
+    private let fadeView = ReaderToolbarFadeView()
     private let titleLabel = MarqueeLabelView()
     private let pageLabel = UILabel()
 
@@ -44,8 +44,8 @@ class ReaderToolbarView: UIView {
     func configure() {
         backgroundColor = .clear
 
-        blurView.isUserInteractionEnabled = false
-        insertSubview(blurView, at: 0)
+        fadeView.isUserInteractionEnabled = false
+        insertSubview(fadeView, at: 0)
 
         titleLabel.font = ReaderFont.publico(size: 16)
         titleLabel.textColor = ReaderSliderView.fillColor
@@ -64,7 +64,7 @@ class ReaderToolbarView: UIView {
     }
 
     func constrain() {
-        blurView.translatesAutoresizingMaskIntoConstraints = false
+        fadeView.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
         pageLabel.translatesAutoresizingMaskIntoConstraints = false
         sliderView.translatesAutoresizingMaskIntoConstraints = false
@@ -72,10 +72,10 @@ class ReaderToolbarView: UIView {
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         NSLayoutConstraint.activate([
-            blurView.topAnchor.constraint(equalTo: topAnchor, constant: -48),
-            blurView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            blurView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            blurView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            fadeView.topAnchor.constraint(equalTo: topAnchor, constant: -72),
+            fadeView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            fadeView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            fadeView.trailingAnchor.constraint(equalTo: trailingAnchor),
 
             titleLabel.leadingAnchor.constraint(equalTo: sliderView.leadingAnchor),
             titleLabel.topAnchor.constraint(equalTo: topAnchor, constant: 12),
@@ -124,5 +124,25 @@ class ReaderToolbarView: UIView {
     func updateSliderPosition() {
         guard let currentPage = currentPage, let totalPages = totalPages else { return }
         sliderView.move(toValue: CGFloat(currentPage - 1) / max(CGFloat(totalPages - 1), 1))
+    }
+}
+
+private final class ReaderToolbarFadeView: UIView {
+    override class var layerClass: AnyClass { CAGradientLayer.self }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        guard let gradient = layer as? CAGradientLayer else { return }
+        let stops: [(CGFloat, CGFloat)] = [
+            (0, 0), (0.15, 0.06), (0.3, 0.2), (0.45, 0.4), (0.6, 0.62), (0.8, 0.85), (1, 0.95)
+        ]
+        gradient.colors = stops.map { UIColor.black.withAlphaComponent($0.1).cgColor }
+        gradient.locations = stops.map { NSNumber(value: Double($0.0)) }
+        gradient.startPoint = CGPoint(x: 0.5, y: 0)
+        gradient.endPoint = CGPoint(x: 0.5, y: 1)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 }

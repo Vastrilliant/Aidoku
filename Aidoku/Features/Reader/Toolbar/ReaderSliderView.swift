@@ -43,11 +43,9 @@ class ReaderSliderView: UIControl {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        trackView.backgroundColor = Self.trackColor
-        trackView.layer.cornerRadius = Self.barHeight / 2
+        trackView.backgroundColor = Self.fillColor
         trackView.isUserInteractionEnabled = false
-        fillView.backgroundColor = Self.fillColor
-        fillView.layer.cornerRadius = Self.barHeight / 2
+        fillView.backgroundColor = Self.trackColor
         fillView.isUserInteractionEnabled = false
         addSubview(trackView)
         addSubview(fillView)
@@ -66,12 +64,10 @@ class ReaderSliderView: UIControl {
         let height = currentBarHeight
         let barY = (bounds.height - height) / 2
         trackView.frame = CGRect(x: 0, y: barY, width: bounds.width, height: height)
-        trackView.layer.cornerRadius = height / 2
 
         let fillWidth = bounds.width * currentValue
         let x = direction == .forward ? 0 : bounds.width - fillWidth
         fillView.frame = CGRect(x: x, y: barY, width: fillWidth, height: height)
-        fillView.layer.cornerRadius = height / 2
     }
 
     // larger touch target than the visible bar

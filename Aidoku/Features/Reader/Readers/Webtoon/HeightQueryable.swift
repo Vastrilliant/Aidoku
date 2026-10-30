@@ -13,7 +13,7 @@ protocol HeightQueryable {
 
 extension ReaderWebtoonPageNode: HeightQueryable {
     func getHeight(for size: CGSize) -> CGFloat {
-        guard size.width > 0 else { return 0 }
+        guard size.width > 0, !isBlacklisted else { return 0 }
 
         let ratio = ratio ?? Self.defaultRatio
 

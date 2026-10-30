@@ -31,6 +31,10 @@ class ReaderWebtoonPageNode: BaseObservingCellNode {
     var text: String?
     var ratio: CGFloat?
 
+    private(set) var isBlacklisted = false
+    private weak var verifiedImage: UIImage?
+    private var isCheckingBlacklist = false
+
     private var pageLoadTask: Task<Void, Never>?
     private var imageTask: ImageTask?
     private var imageProcessingTask: Task<UIImage?, Never>?
@@ -183,7 +187,10 @@ class ReaderWebtoonPageNode: BaseObservingCellNode {
                 .curveEaseInOut
             ]
         ) {
-            if self.image != nil {
+            if self.isBlacklisted {
+                self.imageNode.alpha = 0
+                self.textNode.alpha = 0
+            } else if self.image != nil {
                 self.imageNode.alpha = 1
             } else if self.text != nil {
                 self.textNode.alpha = 1
@@ -231,6 +238,9 @@ extension ReaderWebtoonPageNode {
     }
 
     override func layoutSpecThatFits(_ constrainedSize: ASSizeRange) -> ASLayoutSpec {
+        if isBlacklisted {
+            return ASLayoutSpec()
+        }
         if let image {
             if pillarbox && isPillarboxOrientation() {
                 let percent = (100 - pillarboxAmount) / 100
@@ -289,7 +299,7 @@ extension ReaderWebtoonPageNode {
 
 extension ReaderWebtoonPageNode {
     private func startPageLoad() {
-        guard pageLoadTask == nil, image == nil, text == nil else { return }
+        guard !isBlacklisted, pageLoadTask == nil, image == nil, text == nil else { return }
 
         pageLoadTask = Task { [weak self] in
             guard let self else { return }
@@ -310,7 +320,7 @@ extension ReaderWebtoonPageNode {
     }
 
     func loadPage() async {
-        guard image == nil, text == nil, !Task.isCancelled else { return }
+        guard !isBlacklisted, image == nil, text == nil, !Task.isCancelled else { return }
 
         imageNode.alpha = 0
         textNode.alpha = 0
@@ -517,8 +527,32 @@ extension ReaderWebtoonPageNode {
     }
 
     func displayPage() {
+        if isBlacklisted { return }
         guard text != nil || image != nil else {
             startPageLoad()
+            return
+        }
+
+        if let image, verifiedImage !== image, !PageBlacklist.shared.isEmpty {
+            guard !isCheckingBlacklist else { return }
+            isCheckingBlacklist = true
+            Task { @MainActor [weak self] in
+                let matched = await PageBlacklist.shared.matches(image)
+                guard let self else { return }
+                self.isCheckingBlacklist = false
+                guard self.image === image else {
+                    if self.image != nil {
+                        self.displayPage()
+                    }
+                    return
+                }
+                if matched {
+                    self.markBlacklisted()
+                } else {
+                    self.verifiedImage = image
+                    self.displayPage()
+                }
+            }
             return
         }
 
@@ -566,6 +600,26 @@ extension ReaderWebtoonPageNode {
         image = nil
     }
 
+    private func markBlacklisted() {
+        guard !isBlacklisted else { return }
+        isBlacklisted = true
+        cancelLiveTextAnalysis()
+        cancelDictionaryTextAnalysis()
+        clearDictionaryOverlays()
+        progressNode.isHidden = true
+        transition()
+        delegate?.pageNodeDidBlacklist(self)
+    }
+
+    func recheckBlacklist() {
+        Task { @MainActor [weak self] in
+            guard let self, !self.isBlacklisted, let image = self.image else { return }
+            let matched = await PageBlacklist.shared.matches(image)
+            guard matched, !self.isBlacklisted, self.image === image else { return }
+            self.markBlacklisted()
+        }
+    }
+
     private func transition() {
         let width = pageWidth
         guard width > 0 else { return }
@@ -574,7 +628,7 @@ extension ReaderWebtoonPageNode {
         } else {
             ratio ?? Self.defaultRatio
         }
-        let size = CGSize(width: width, height: width * ratio)
+        let size = CGSize(width: width, height: isBlacklisted ? 0 : width * ratio)
         frame = CGRect(origin: .zero, size: size)
         transitionLayout(with: ASSizeRange(min: .zero, max: size), animated: true, shouldMeasureAsync: false)
     }

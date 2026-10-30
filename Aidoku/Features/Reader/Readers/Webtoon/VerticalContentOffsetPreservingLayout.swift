@@ -112,7 +112,7 @@ class VerticalContentOffsetPreservingLayout: UICollectionViewFlowLayout {
                 currentAttributes[indexPath] = attributes
                 itemIdentifiers[indexPath] = itemIdentifier(for: indexPath)
 
-                origin += attributes.frame.size.height + minimumLineSpacing
+                origin += attributes.frame.size.height + (isCollapsed(at: indexPath) ? 0 : minimumLineSpacing)
             }
         }
 
@@ -169,6 +169,16 @@ class VerticalContentOffsetPreservingLayout: UICollectionViewFlowLayout {
             let node = collectionView.collectionNode?.nodeForItem(at: indexPath)
         else { return nil }
         return ObjectIdentifier(node)
+    }
+
+    private func isCollapsed(at indexPath: IndexPath) -> Bool {
+        guard
+            let collectionView = collectionView as? ASCollectionView,
+            let node = collectionView.collectionNode?.nodeForItem(at: indexPath) as? ReaderWebtoonPageNode
+        else {
+            return false
+        }
+        return node.isBlacklisted
     }
 
     func getHeight(for indexPath: IndexPath) -> CGFloat {

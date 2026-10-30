@@ -69,6 +69,8 @@ class ReaderPageViewController: BaseObservingViewController {
     }
     var doublePageRestorationConstraints: [NSLayoutConstraint] = []
 
+    var shouldSkipImage: (@MainActor (UIImage) async -> Bool)?
+
     /// Callback when image aspect ratio is updated
     var onAspectRatioUpdated: (() -> Void)?
 
@@ -189,6 +191,17 @@ class ReaderPageViewController: BaseObservingViewController {
         zoomView?.zoomEnabled = false
         Task {
             let result = await pageView.setPage(page, sourceId: sourceId, skipProcessing: skipProcessing)
+            guard self.page == page else { return }
+
+            if
+                result,
+                !PageBlacklist.shared.isEmpty,
+                let image = pageView.imageView.image,
+                let skipCheck = self.shouldSkipImage,
+                await skipCheck(image)
+            {
+                return
+            }
             guard self.page == page else { return }
 
             didLoadPageSuccessfully = result

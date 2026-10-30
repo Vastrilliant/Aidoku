@@ -59,6 +59,9 @@ class ReaderWebtoonViewController: ZoomableCollectionViewController {
     // Stores the last calculated page number
     private var previousPage = 0
 
+    // Indexes of blacklisted pages that were skipped, per chapter key
+    private var skippedPages: [String: Set<Int>] = [:]
+
     private var autoScrollDisplayLink: CADisplayLink?
     private var autoScrollLastTimestamp: CFTimeInterval?
     private var autoScrollPausedForUserInteraction = false
@@ -496,8 +499,38 @@ extension ReaderWebtoonViewController: UIContextMenuInteractionDelegate {
                 }
             }
 
-            return UIMenu(title: "", children: [shareAction, saveToPhotosAction, reloadAction])
+            let blacklistAction = UIAction(
+                title: NSLocalizedString("BLACKLIST_PAGE"),
+                image: UIImage(systemName: "eye.slash")
+            ) { _ in
+                Task { @MainActor in
+                    await self.blacklistPage(image: image)
+                }
+            }
+
+            return UIMenu(title: "", children: [shareAction, saveToPhotosAction, reloadAction, blacklistAction])
         })
+    }
+
+    @MainActor
+    private func blacklistPage(image: UIImage) async {
+        await PageBlacklist.shared.add(image)
+        for (section, sectionPages) in pages.enumerated() {
+            for item in sectionPages.indices {
+                let indexPath = IndexPath(item: item, section: section)
+                (collectionNode.nodeForItem(at: indexPath) as? ReaderWebtoonPageNode)?.recheckBlacklist()
+            }
+        }
+    }
+
+    func pageNodeDidBlacklist(_ node: ReaderWebtoonPageNode) {
+        skippedPages[node.page.chapterId, default: []].insert(node.page.index)
+        reportSkippedPages()
+    }
+
+    private func reportSkippedPages() {
+        let count = chapter.flatMap { skippedPages[$0.key]?.count } ?? 0
+        delegate?.setSkippedPages(count)
     }
 
     /// Reloads the page image for the given webtoon page node
@@ -809,6 +842,7 @@ extension ReaderWebtoonViewController {
         delegate?.setChapter(chapter)
         delegate?.setPages(pages.filter({ $0.type == .imagePage }))
         viewModel.setPages(chapter: chapter, pages: pages)
+        reportSkippedPages()
     }
 
     /// Switch current chapter to next
@@ -824,6 +858,7 @@ extension ReaderWebtoonViewController {
         delegate?.setChapter(chapter)
         delegate?.setPages(pages.filter({ $0.type == .imagePage }))
         viewModel.setPages(chapter: chapter, pages: pages)
+        reportSkippedPages()
     }
 
     /// Refresh info page chapter info
@@ -928,6 +963,8 @@ extension ReaderWebtoonViewController: ReaderReaderDelegate {
         self.chapter = chapter
         updateDoubleTapZoomSetting()
         chapters = [chapter]
+        skippedPages = [:]
+        delegate?.setSkippedPages(0)
 
         Task {
             await viewModel.loadPages(chapter: chapter)

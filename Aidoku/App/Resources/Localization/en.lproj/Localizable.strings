@@ -791,6 +791,9 @@
 "SET_AS_SINGLE_PAGE" = "Set as Single Page";
 "UNSET_AS_SINGLE_PAGE" = "Unset as Single Page";
 "RELOAD" = "Reload";
+"BLACKLIST_PAGE" = "Blacklist Page";
+"%i_PAGES_SKIPPED" = "skipped %i pages";
+"ONE_PAGE_SKIPPED" = "skipped 1 page";
 "RELOAD_FAILED" = "Reload Failed";
 "RELOAD_FAILED_TEXT" = "Failed to reload the image. Please try again.";
 "%i_OF_%i" = "%i of %i";
